@@ -1,125 +1,137 @@
-package com.quickjs.plugin;
+package com.quickjs.plugin
 
-import android.util.Log;
-import android.webkit.JavascriptInterface;
+import android.util.Log
+import android.webkit.JavascriptInterface
 
-import com.quickjs.JSArray;
-import com.quickjs.JSContext;
-import com.quickjs.JSObject;
-import com.quickjs.JSValue;
-import com.quickjs.Plugin;
+import com.quickjs.JSArray
+import com.quickjs.JSContext
+import com.quickjs.JSObject
+import com.quickjs.Plugin
 
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.HashMap
 
-public class ConsolePlugin extends Plugin {
-    private int count;
-    private final Map<String, Long> timer = new HashMap<>();
+open class ConsolePlugin : Plugin() {
+    private var count = 0
+    private val timer = HashMap<String, Long>()
 
-    @Override
-    public void setup(JSContext context) {
-        JSObject console = context.addJavascriptInterface(this, "console");
-        console.registerJavaMethod((receiver, args) -> {
-            if (!args.getBoolean(0)) {
-                error(args.getString(1));
+    override fun setup(context: JSContext) {
+        val console = context.global.addJavascriptInterface(this, "console")
+        console.registerJavaMethod("assert") { receiver, args ->
+            if ((args[0] ?: false) == true) {
+                error(args[1].toString())
             }
-        }, "assert");
+        }
+
+//        console.set("prototype", context.getPrototype(console))
     }
 
-    @Override
-    public void close(JSContext context) {
+    override fun close(context: JSContext) {
 
-    }
-
-    @JavascriptInterface
-    public final void log(String msg) {
-        count++;
-        println(Log.DEBUG, msg);
     }
 
     @JavascriptInterface
-    public final void info(String msg) {
-        count++;
-        println(Log.INFO, msg);
+    fun log(vararg msg: Any?) {
+        count++
+        println(Log.DEBUG, *msg)
     }
 
     @JavascriptInterface
-    public final void error(String msg) {
-        count++;
-        println(Log.ERROR, msg);
+    fun info(vararg msg: Any?) {
+        count++
+        println(Log.INFO, *msg)
     }
 
     @JavascriptInterface
-    public final void warn(String msg) {
-        count++;
-        println(Log.WARN, msg);
-    }
-
-    public void println(int priority, String msg) {
-        Log.println(priority, "QuickJS", msg);
+    fun error(vararg msg: Any?) {
+        count++
+        println(Log.ERROR, *msg)
     }
 
     @JavascriptInterface
-    public final int count() {
-        return count;
+    fun dir(vararg msg: Any?) {
+        count++
+        println(Log.INFO, *msg)
+    }
+
+    @JavascriptInterface
+    fun warn(vararg msg: Any?) {
+        count++
+        println(Log.WARN, *msg)
+    }
+
+    open fun println(priority: Int, vararg msg: Any?) {
+        Log.println(priority, "QuickJS-Console", join(msg))
+    }
+
+    @JavascriptInterface
+    fun count(): Int {
+        return count
     }
 
 
     @JavascriptInterface
-    public final void table(JSObject obj) {
-        if (obj instanceof JSArray) {
-            log(((JSArray) obj).toJSONArray().toString());
+    fun table(vararg msg: Any?) {
+        val obj = msg[0] as? JSObject
+        if (obj is JSArray) {
+            log(obj.toJSONArray().toString())
         } else if (obj != null) {
-            log(obj.toJSONObject().toString());
+            log(obj.toJSONObject().toString())
         }
     }
 
 
     @JavascriptInterface
-    public final void time(String name) {
+    fun time(vararg msg: Any?) {
+        val name = msg[0] as? String ?: ""
         if (timer.containsKey(name)) {
-            warn(String.format("Timer '%s' already exists", name));
-            return;
+            warn(String.format("Timer '%s' already exists", name))
+            return
         }
-        timer.put(name, System.currentTimeMillis());
+        timer.put(name, System.currentTimeMillis())
     }
 
     @JavascriptInterface
-    public final void timeEnd(String name) {
-        Long startTime = timer.get(name);
+    fun timeEnd(vararg msg: Any?) {
+        val name = msg[0] as? String ?: ""
+        val startTime = timer.get(name)
         if (startTime != null) {
-            float ms = (System.currentTimeMillis() - startTime);
-            log(String.format("%s: %s ms", name, ms));
+            val ms = (System.currentTimeMillis() - startTime)
+            log(String.format("%s: %s ms", name, ms))
         }
-        timer.remove(name);
+        timer.remove(name)
     }
 
     @JavascriptInterface
-    public void trace() {
+    fun trace() {
         log("This 'console.trace' function is not supported");
     }
 
     @JavascriptInterface
-    public void clear() {
+    fun clear() {
         log("This 'console.clear' function is not supported");
     }
 
     @JavascriptInterface
-    public void group(String name) {
+    fun group(name: String) {
         log("This 'console.group' function is not supported");
     }
 
     @JavascriptInterface
-    public void groupCollapsed(String name) {
+    fun groupCollapsed(name: String) {
         log("This 'console.groupCollapsed' function is not supported");
     }
 
     @JavascriptInterface
-    public void groupEnd(String name) {
+    fun groupEnd(name: String) {
         log("This 'console.groupEnd' function is not supported");
+    }
+
+    private fun join(args: Array<out Any?>): String {
+        val result = arrayListOf<String?>()
+        for (it in args) {
+            result.add(it?.toString())
+        }
+        return result.joinToString(" ")
     }
 }

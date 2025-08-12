@@ -1,5 +1,5 @@
-package com.quickjs;
+package com.quickjs
 
-public interface JavaCallback {
-    Object invoke(JSObject receiver,JSArray args);
-}
+typealias JavaCallback = (receiver: JSObject?, args: Array<out Any?>) -> Any?
+
+typealias JavaConstructorCallback = (receiver: JSObject, args: Array<out Any?>) -> Any?

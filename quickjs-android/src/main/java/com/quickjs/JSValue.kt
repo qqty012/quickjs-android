@@ -1,111 +1,56 @@
-package com.quickjs;
+package com.quickjs
 
-import androidx.annotation.Keep;
-
-import java.util.Arrays;
-
-@Keep
-public class JSValue {
-//    JS_TAG_FIRST       = -11, /* first negative tag */
-//    JS_TAG_BIG_DECIMAL = -11,
-//    JS_TAG_BIG_INT     = -10,
-//    JS_TAG_BIG_FLOAT   = -9,
-//    JS_TAG_SYMBOL      = -8,
-//    JS_TAG_STRING      = -7,
-//    JS_TAG_MODULE      = -3, /* used internally */
-//    JS_TAG_FUNCTION_BYTECODE = -2, /* used internally */
-//    JS_TAG_OBJECT      = -1,
-//
-//    JS_TAG_INT         = 0,
-//    JS_TAG_BOOL        = 1,
-//    JS_TAG_NULL        = 2,
-//    JS_TAG_UNDEFINED   = 3,
-//    JS_TAG_UNINITIALIZED = 4,
-//    JS_TAG_CATCH_OFFSET = 5,
-//    JS_TAG_EXCEPTION   = 6,
-//    JS_TAG_FLOAT64     = 7,
+import java.io.Closeable
 
 
-    static final int TYPE_NULL = 0;
-    static final int TYPE_UNKNOWN = 0;
-    static final int TYPE_INTEGER = 1;
-    static final int TYPE_DOUBLE = 2;
-    static final int TYPE_BOOLEAN = 3;
-    static final int TYPE_STRING = 4;
-    static final int TYPE_JS_ARRAY = 5;
-    static final int TYPE_JS_OBJECT = 6;
-    static final int TYPE_JS_FUNCTION = 7;
-    static final int TYPE_INT_32_ARRAY = 1;
-    static final int TYPE_FLOAT_64_ARRAY = 2;
-    static final int TYPE_JS_TYPED_ARRAY = 8;
-    static final int TYPE_BYTE = 9;
-    static final int TYPE_INT_8_ARRAY = 9;
-    static final int TYPE_JS_ARRAY_BUFFER = 10;
-    static final int TYPE_UNSIGNED_INT_8_ARRAY = 11;
-    static final int TYPE_UNSIGNED_INT_8_CLAMPED_ARRAY = 12;
-    static final int TYPE_INT_16_ARRAY = 13;
-    static final int TYPE_UNSIGNED_INT_16_ARRAY = 14;
-    static final int TYPE_UNSIGNED_INT_32_ARRAY = 15;
-    static final int TYPE_FLOAT_32_ARRAY = 16;
-    static final int TYPE_UNDEFINED = 99;
+open class JSValue: Closeable {
+    @Volatile
+    var released: Boolean = false
 
-    protected JSContext context;
+    companion object {
+        const val TYPE_NULL = 0
+        const val TYPE_UNKNOWN = 0
+        const val TYPE_INTEGER = 1
+        const val TYPE_DOUBLE = 2
+        const val TYPE_BOOLEAN = 3
+        const val TYPE_STRING = 4
+        const val TYPE_JS_ARRAY = 5
+        const val TYPE_JS_OBJECT = 6
+        const val TYPE_JS_FUNCTION = 7
+        const val TYPE_JS_EXCEPTION = 8
+        const val TYPE_UNDEFINED = 99
 
-    long tag;
-    int u_int32;
-    double u_float64;
-    long u_ptr;
+        private val typeMap = mapOf(
+            TYPE_UNDEFINED to TYPE.UNDEFINED,
+            TYPE_INTEGER to TYPE.INTEGER,
+            TYPE_DOUBLE to TYPE.DOUBLE,
+            TYPE_BOOLEAN to TYPE.BOOLEAN,
+            TYPE_STRING to TYPE.STRING,
+            TYPE_JS_ARRAY to TYPE.JS_ARRAY,
+            TYPE_JS_FUNCTION to TYPE.JS_FUNCTION,
+            TYPE_JS_OBJECT to TYPE.JS_OBJECT
+        )
 
-    volatile boolean released = false;
-
-    protected static Object checkType(Object result, TYPE type) {
-        switch (type.value) {
-            case TYPE_UNKNOWN:
-                return result;
-            case TYPE_INTEGER:
-                if (result instanceof Integer) {
-                    return result;
-                }
-                return 0;
-            case TYPE_DOUBLE:
-                if (result instanceof Double) {
-                    return result;
-                }
-                return 0;
-            case TYPE_BOOLEAN:
-                if (result instanceof Boolean) {
-                    return result;
-                }
-                return false;
-            case TYPE_STRING:
-                if (result instanceof String) {
-                    return result;
-                }
-                return null;
-            case TYPE_JS_ARRAY:
-                if (result instanceof JSArray) {
-                    return result;
-                }
-                return null;
-            case TYPE_JS_FUNCTION:
-                if (result instanceof JSFunction) {
-                    return result;
-                }
-                return null;
-            case TYPE_JS_OBJECT:
-                if (result instanceof JSObject) {
-                    return result;
-                }
-                return null;
+        fun checkType(value: Any?, expectedType: TYPE): Any? {
+            return when (expectedType) {
+                TYPE.INTEGER -> value as? Int
+                TYPE.DOUBLE -> value as? Double
+                TYPE.BOOLEAN -> value as? Boolean
+                TYPE.STRING -> value as? String
+                TYPE.JS_ARRAY -> value as? JSArray
+                TYPE.JS_OBJECT -> value as? JSObject
+                else -> value
+            }
         }
-        return null;
+
+        fun undefined(context: JSContext): JSValue {
+            return context.native.undefined(context.contextPtr)
+        }
+
+        fun NULL(): JSValue? = null
     }
 
-    public long getTag() {
-        return tag;
-    }
-
-    public enum TYPE {
+    enum class TYPE(val value: Int) {
         NULL(TYPE_NULL),
         UNKNOWN(TYPE_UNKNOWN),
         UNDEFINED(TYPE_UNDEFINED),
@@ -115,128 +60,86 @@ public class JSValue {
         STRING(TYPE_STRING),
         JS_ARRAY(TYPE_JS_ARRAY),
         JS_OBJECT(TYPE_JS_OBJECT),
-        JS_FUNCTION(TYPE_JS_FUNCTION);
+        JS_FUNCTION(TYPE_JS_FUNCTION)
+    }
 
-        final int value;
+    val context: JSContext
+    @JvmField
+    val tag: Long
+    @JvmField
+    val uInt32: Int
+    @JvmField
+    val uFloat64: Double
+    @JvmField
+    val uPtr: Long
+    val quickJS: QuickJS
 
-        TYPE(int value) {
-            this.value = value;
+    constructor(context: JSContext, tag: Long, uInt32: Int, uFloat64: Double, uPtr: Long) {
+        this.context = context
+        this.tag = tag
+        this.uInt32 = uInt32
+        this.uFloat64 = uFloat64
+        this.uPtr = uPtr
+        quickJS = context.quickJS
+    }
+
+    constructor(context: JSContext, value: JSValue) : this(context, value.tag, value.uInt32, value.uFloat64, value.uPtr) {
+        value.released = true
+        context.let {
+            it.removeObjRef(value)
+            it.addObjRef(this)
+            it.checkReleased()
         }
     }
 
-    JSValue(JSContext context, long tag, int u_int32, double u_float64, long u_ptr) {
-        this.context = context;
-        this.tag = tag;
-        this.u_int32 = u_int32;
-        this.u_float64 = u_float64;
-        this.u_ptr = u_ptr;
-        if (context != null) {
-            context.addObjRef(this);
+    protected fun checkReleased() {
+        if (context.isReleased()) {
+            throw IllegalStateException("JSContext 已释放")
         }
     }
 
-    JSValue(JSContext context, JSValue value) {
-        // 赋值给新的对象，原来的对象就要标记成销毁
-        value.released = true;
-        this.context = context;
-        this.tag = value.tag;
-        this.u_int32 = value.u_int32;
-        this.u_float64 = value.u_float64;
-        this.u_ptr = value.u_ptr;
-        if (context != null) {
-            value.released = true;
-            context.removeObjRef(value);
-            context.addObjRef(this);
-        }
-        if (context != null) {
-            context.checkReleased();
+    protected fun checkRuntime(value: JSValue) {
+        if (value.context != context) {
+            throw IllegalArgumentException("JSValue 不属于当前 JSContext")
         }
     }
 
-    long getContextPtr() {
-        return context.getContextPtr();
-    }
+    fun getContextPtr(): Long = context.contextPtr
 
-    protected void close() {
-        close(false);
-    }
-
-    private void close(boolean finalize) {
-        if (released) {
-            return;
-        }
-        released = true;
-        context.releaseObjRef(this, finalize);
-    }
-
-    public boolean isUndefined() {
-        return getContext().getNative()._isUndefined(getContextPtr(), this);
-    }
-
-    public TYPE getType() {
-        this.context.checkReleased();
-        int value = getContext().getNative()._getObjectType(getContextPtr(), this);
-        switch (value) {
-            case TYPE_UNDEFINED:
-                return TYPE.UNDEFINED;
-            case TYPE_UNKNOWN:
-                return TYPE.UNKNOWN;
-            case TYPE_INTEGER:
-                return TYPE.INTEGER;
-            case TYPE_DOUBLE:
-                return TYPE.DOUBLE;
-            case TYPE_BOOLEAN:
-                return TYPE.BOOLEAN;
-            case TYPE_STRING:
-                return TYPE.STRING;
-            case TYPE_JS_ARRAY:
-                return TYPE.JS_ARRAY;
-            case TYPE_JS_FUNCTION:
-                return TYPE.JS_FUNCTION;
-            case TYPE_JS_OBJECT:
-                return TYPE.JS_OBJECT;
-        }
-        return TYPE.UNKNOWN;
-    }
-
-    public static JSObject Undefined(JSContext context) {
-        return (JSObject) context.getNative()._Undefined(context.getContextPtr());
-    }
-
-    public static JSValue NULL() {
-        return null;
+    override fun close() {
+        if (released) return
+        released = true
+        context.releaseObjRef(this, false)
     }
 
 
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        JSValue jsValue = (JSValue) o;
-        return jsValue.tag == this.tag;
+    fun isUndefined(): Boolean =
+        context.native.isUndefined(getContextPtr(), this)
+
+    fun getType(): TYPE {
+        context.checkReleased()
+        return typeMap[context.native.getObjectType(getContextPtr(), this)] ?: TYPE.UNKNOWN
     }
 
-    @Override
-    protected void finalize() throws Throwable {
-        if (!(this instanceof JSContext)) {
-            close(true);
-        }
-        super.finalize();
+    override fun equals(other: Any?): Boolean =
+        other is JSValue && other.tag == this.tag
+
+
+    protected fun getNative(): QuickJSNative = context.native
+
+//    fun postEventQueue(event: Runnable) = getQuickJS().postEventQueue(event)
+
+    override fun toString(): String {
+        return context.toJSString(this)
     }
 
-    public JSContext getContext() {
-        return context;
-    }
-
-    protected QuickJSNative getNative() {
-        return getContext().getNative();
-    }
-
-    public QuickJS getQuickJS() {
-        return getContext().getQuickJS();
-    }
-
-    public void postEventQueue(Runnable event) {
-        getQuickJS().postEventQueue(event);
+    override fun hashCode(): Int {
+        var result = context.hashCode()
+        result = 31 * result + tag.hashCode()
+        result = 31 * result + uInt32
+        result = 31 * result + uFloat64.hashCode()
+        result = 31 * result + uPtr.hashCode()
+        result = 31 * result + released.hashCode()
+        return result
     }
 }

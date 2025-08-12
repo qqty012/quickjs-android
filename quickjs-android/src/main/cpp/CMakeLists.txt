@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10.2)
+cmake_minimum_required(VERSION 4.0.2)
 project("quickjs-android")
 add_subdirectory(./quickjs)
 add_library(

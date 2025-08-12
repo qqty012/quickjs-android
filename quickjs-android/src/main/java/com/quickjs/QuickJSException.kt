@@ -1,22 +1,17 @@
-package com.quickjs;
+package com.quickjs
 
-public class QuickJSException extends RuntimeException {
-    private String name;
+class QuickJSException: RuntimeException {
+    private var name: String? = null
 
-    public QuickJSException(String name, String message) {
-        super(name + "," + message);
-        this.name = name;
+    constructor(name: String, message: String): super("$name,$message") {
+        this.name = name
     }
 
-    public QuickJSException(String message, Throwable cause) {
-        super(message, cause);
-    }
+    constructor(message: String, cause: Throwable): super(message, cause)
 
-    public QuickJSException(Throwable cause) {
-        super(cause);
-    }
+    constructor(cause: Throwable): super(cause)
 
-    public String getName() {
-        return name;
+    fun getName(): String? {
+        return name
     }
 }

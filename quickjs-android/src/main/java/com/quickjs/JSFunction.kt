@@ -1,34 +1,37 @@
-package com.quickjs;
+package com.quickjs
 
-public class JSFunction extends JSObject {
+open class JSFunction : JSObject {
 
-    public JSFunction(JSContext context, JavaCallback callback) {
-        super(context, context.getNative()._initNewJSFunction(context.getContextPtr(), callback.hashCode(), false));
-        this.context._registerCallback(callback, this);
+    constructor(context: JSContext, callback: JavaCallback) : this(context, callback, false)
+
+    private constructor(context: JSContext, callback: JavaCallback, isVoid: Boolean) :
+            super(context, context.native.initNewJSFunction(context.contextPtr, callback.hashCode())) {
+        context.registerCallback(callback)
     }
 
-    public JSFunction(JSContext context, JavaVoidCallback callback) {
-        super(context, context.getNative()._initNewJSFunction(context.getContextPtr(), callback.hashCode(), true));
-        this.context._registerCallback(callback, this);
+    internal constructor(context: JSContext, tag: Long, uInt32: Int, uFloat64: Double, uPtr: Long) :
+            super(context, tag, uInt32, uFloat64, uPtr)
+
+    open fun call(type: TYPE, receiver: JSObject? = null, vararg parameters: Any?): Any? {
+        context.checkReleased()
+        parameters.filterIsInstance<JSValue>().forEach { context.checkRuntime(it) }
+        val actualReceiver = receiver ?: undefined(context)
+        val result = getNative().executeFunction2(context.contextPtr, type.value, actualReceiver, this, parameters)
+        QuickJS.checkException(context)
+        return checkType(result, type)
     }
 
-    JSFunction(JSContext context, long tag, int u_int32, double u_float64, long u_ptr) {
-        super(context, tag, u_int32, u_float64, u_ptr);
+    fun call(receiver: JSObject? = null, vararg parameters: Any?): Any? {
+        return call(TYPE.UNKNOWN, receiver, *parameters)
     }
 
-    public Object call(JSValue.TYPE type, JSObject receiver, JSArray parameters) {
-        this.context.checkReleased();
-        this.context.checkRuntime(parameters);
-        if (receiver == null) {
-            receiver = JSValue.Undefined(context);
+    override fun toString(): String {
+        val result = context.native.toJSString(context.contextPtr, this) ?: return "undefined"
+
+        return if (result.trim().startsWith("function")) {
+            result.replace("function", "ƒ")
+        } else {
+            "ƒ $result"
         }
-        Object result = getNative()._executeFunction2(context.getContextPtr(), type.value, receiver, this, parameters);
-        QuickJS.checkException(context);
-        return JSValue.checkType(result, type);
     }
-
-    public Object call(JSObject receiver, JSArray parameters) {
-        return call(TYPE.UNKNOWN, receiver, parameters);
-    }
-
 }

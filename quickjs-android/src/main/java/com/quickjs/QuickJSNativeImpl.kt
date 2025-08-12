@@ -1,82 +1,148 @@
-package com.quickjs;
+package com.quickjs
 
-class QuickJSNativeImpl implements QuickJSNative {
+class QuickJSNativeImpl : QuickJSNative {
 
-    static native long _createRuntime();
 
-    @Override
-    public native void _releaseRuntime(long runtimePtr);
 
-    @Override
-    public native long _createContext(long runtimePtr);
+    companion object {
+        @JvmStatic
+        external fun createRuntime(): Long
+    }
 
-    @Override
-    public native void _releaseContext(long contextPtr);
+    external override fun releaseRuntime(runtimePtr: Long)
 
-    @Override
-    public native Object _executeScript(long contextPtr, int expectedType, String source, String fileName, int eval_flags);
+    external override fun createContext(runtimePtr: Long): Long
 
-    @Override
-    public native JSObject _getGlobalObject(long contextPtr);
+    external override fun releaseContext(contextPtr: Long)
 
-    @Override
-    public native void _set(long contextPtr, JSValue objectHandle, String key, Object value);
+    external override fun executeScript(
+        contextPtr: Long,
+        expectedType: Int,
+        source: String,
+        fileName: String,
+        evalFlags: Int
+    ): Any?
 
-    @Override
-    public native Object _get(long contextPtr, int expectedType, JSValue objectHandle, String key);
+    external override fun getGlobalObject(contextPtr: Long): JSObject
 
-    @Override
-    public native Object _arrayGet(long contextPtr, int expectedType, JSValue objectHandle, int index);
+    external override fun set(
+        contextPtr: Long,
+        objectHandle: JSValue,
+        key: String,
+        value: Any?
+    )
 
-    @Override
-    public native void _arrayAdd(long contextPtr, JSValue objectHandle, Object value);
+    external override fun get(
+        contextPtr: Long,
+        expectedType: Int,
+        objectHandle: JSValue,
+        key: String
+    ): Any?
 
-    @Override
-    public native Object _executeFunction(long contextPtr, int expectedType, JSValue objectHandle, String name, JSValue parametersHandle);
+    external override fun arrayGet(
+        contextPtr: Long,
+        expectedType: Int,
+        objectHandle: JSValue,
+        index: Int
+    ): Any?
 
-    @Override
-    public native Object _executeFunction2(long contextPtr, int expectedType, JSValue objectHandle, JSValue functionHandle, JSValue parametersHandle);
+    external override fun arrayAdd(
+        contextPtr: Long,
+        objectHandle: JSValue,
+        value: Any?
+    )
 
-    @Override
-    public native JSObject _initNewJSObject(long contextPtr);
+    external override fun executeFunction(
+        contextPtr: Long,
+        expectedType: Int,
+        objectHandle: JSValue,
+        name: String,
+        parametersHandle: Array<out Any?>
+    ): Any?
 
-    @Override
-    public native JSArray _initNewJSArray(long contextPtr);
+    external override fun executeFunction2(
+        contextPtr: Long,
+        expectedType: Int,
+        objectHandle: JSValue,
+        functionHandle: JSValue,
+        parametersHandle: Array<out Any?>
+    ): Any?
 
-    @Override
-    public native JSFunction _initNewJSFunction(long contextPtr, int javaCallerId, boolean voidMethod);
+    external override fun initNewJSObject(contextPtr: Long): JSObject
 
-    @Override
-    public native void _releasePtr(long contextPtr, long tag, int u_int32, double u_float64, long u_ptr);
+    external override fun initNewJSArray(contextPtr: Long): JSArray
 
-    @Override
-    public native JSFunction _registerJavaMethod(long contextPtr, JSValue objectHandle, String jsFunctionName, int javaCallerId, boolean voidMethod);
+    external override fun initNewJSFunction(
+        contextPtr: Long,
+        javaCallerId: Int
+    ): JSFunction
 
-    @Override
-    public native int _getObjectType(long contextPtr, JSValue objectHandle);
+    external override fun releasePtr(
+        contextPtr: Long,
+        tag: Long,
+        uInt32: Int,
+        uFloat64: Double,
+        uPtr: Long
+    )
 
-    @Override
-    public native boolean _contains(long contextPtr, JSValue objectHandle, String key);
+    external override fun registerJavaMethod(
+        contextPtr: Long,
+        objectHandle: JSValue,
+        jsFunctionName: String,
+        javaCallerId: Int,
+    ): JSFunction
 
-    @Override
-    public native String[] _getKeys(long contextPtr, JSValue objectHandle);
+    external override fun getObjectType(
+        contextPtr: Long,
+        objectHandle: JSValue
+    ): Int
 
-    @Override
-    public native boolean _isUndefined(long contextPtr, JSValue value);
+    external override fun contains(
+        contextPtr: Long,
+        objectHandle: JSValue,
+        key: String
+    ): Boolean
 
-    @Override
-    public native JSValue _Undefined(long contextPtr);
+    external override fun getKeys(
+        contextPtr: Long,
+        objectHandle: JSValue
+    ): Array<String>
 
-    @Override
-    public native JSValue _getValue(long contextPtr, JSObject object, String key);
+    external override fun isUndefined(
+        contextPtr: Long,
+        value: JSValue
+    ): Boolean
 
-    @Override
-    public native JSValue _arrayGetValue(long contextPtr, JSArray array, int index);
+    external override fun undefined(contextPtr: Long): JSValue
 
-    @Override
-    public native String[] _getException(long contextPtr);
+    external override fun getValue(
+        contextPtr: Long,
+        obj: JSObject,
+        key: String
+    ): JSValue
 
-    @Override
-    public native JSFunction _newClass(long contextPtr, int javaCallerId);
+    external override fun arrayGetValue(
+        contextPtr: Long,
+        array: JSArray,
+        index: Int
+    ): JSValue?
 
+    external override fun getException(contextPtr: Long): Array<String>?
+
+    external override fun newClass(
+        contextPtr: Long,
+        javaCallerId: Int
+    ): JSFunction
+
+    external override fun toJSString(contextPtr: Long, value: JSValue): String?
+
+    // 查看原型
+    external override fun getPrototype(contextPtr: Long, obj: JSObject): JSObject
+
+    // 设置原型
+    external override fun setPrototype(contextPtr: Long, obj: JSObject, prototype: JSObject)
+
+    external override fun newError(contextPtr: Long, message: String): JSObject
+
+    external override fun isError(contextPtr: Long, value: JSValue): Boolean
 }

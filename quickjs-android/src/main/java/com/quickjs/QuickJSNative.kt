@@ -1,53 +1,92 @@
-package com.quickjs;
+package com.quickjs
 
-public interface QuickJSNative {
-    void _releaseRuntime(long runtimePtr);
+interface QuickJSNative {
+    fun releaseRuntime(runtimePtr: Long)
 
-    long _createContext(long runtimePtr);
+    fun createContext(runtimePtr: Long): Long
 
-    void _releaseContext(long contextPtr);
+    fun releaseContext(contextPtr: Long)
 
-    Object _executeScript(long contextPtr, int expectedType, String source, String fileName, int eval_flags);
+    fun executeScript(
+            contextPtr: Long,
+            expectedType: Int,
+            source: String,
+            fileName: String,
+            evalFlags: Int
+    ): Any?
 
-    JSObject _getGlobalObject(long contextPtr);
+    fun getGlobalObject(contextPtr: Long): JSObject
 
-    void _set(long contextPtr, JSValue objectHandle, String key, Object value);
+    fun set(contextPtr: Long, objectHandle: JSValue, key: String, value: Any?)
 
-    Object _get(long contextPtr, int expectedType, JSValue objectHandle, String key);
+    fun get(contextPtr: Long, expectedType: Int, objectHandle: JSValue, key: String): Any?
 
-    Object _arrayGet(long contextPtr, int expectedType, JSValue objectHandle, int index);
+    fun arrayGet(contextPtr: Long, expectedType: Int, objectHandle: JSValue, index: Int): Any?
 
-    void _arrayAdd(long contextPtr, JSValue objectHandle, Object value);
+    fun arrayAdd(contextPtr: Long, objectHandle: JSValue, value: Any?)
 
-    Object _executeFunction(long contextPtr, int expectedType, JSValue objectHandle, String name, JSValue parametersHandle);
+    fun executeFunction(
+        contextPtr: Long,
+        expectedType: Int,
+        objectHandle: JSValue,
+        name: String,
+        parametersHandle: Array<out Any?>
+    ): Any?
 
-    Object _executeFunction2(long contextPtr, int expectedType, JSValue objectHandle, JSValue functionHandle, JSValue parametersHandle);
+    fun executeFunction2(
+        contextPtr: Long,
+        expectedType: Int,
+        objectHandle: JSValue,
+        functionHandle: JSValue,
+        parametersHandle: Array<out Any?>
+    ): Any?
 
-    JSObject _initNewJSObject(long contextPtr);
+    fun initNewJSObject(contextPtr: Long): JSObject
 
-    JSArray _initNewJSArray(long contextPtr);
+    fun initNewJSArray(contextPtr: Long): JSArray
 
-    JSFunction _initNewJSFunction(long contextPtr, int javaCallerId, boolean voidMethod);
+    fun initNewJSFunction(contextPtr: Long, javaCallerId: Int): JSFunction
 
-    void _releasePtr(long contextPtr, long tag, int u_int32, double u_float64, long u_ptr);
+    fun releasePtr(
+            contextPtr: Long,
+            tag: Long,
+            uInt32: Int,
+            uFloat64: Double,
+            uPtr: Long
+    )
 
-    JSFunction _registerJavaMethod(long contextPtr, JSValue objectHandle, String jsFunctionName, int javaCallerId, boolean voidMethod);
+    fun registerJavaMethod(
+            contextPtr: Long,
+            objectHandle: JSValue,
+            jsFunctionName: String,
+            javaCallerId: Int,
+    ): JSFunction
 
-    int _getObjectType(long contextPtr, JSValue objectHandle);
+    fun getObjectType(contextPtr: Long, objectHandle: JSValue): Int
 
-    boolean _contains(long contextPtr, JSValue objectHandle, String key);
+    fun contains(contextPtr: Long, objectHandle: JSValue, key: String): Boolean
 
-    String[] _getKeys(long contextPtr, JSValue objectHandle);
+    fun getKeys(contextPtr: Long, objectHandle: JSValue): Array<String>
 
-    boolean _isUndefined(long contextPtr, JSValue value);
+    fun isUndefined(contextPtr: Long, value: JSValue): Boolean
 
-    JSValue _Undefined(long contextPtr);
+    fun undefined(contextPtr: Long): JSValue
 
-    JSValue _getValue(long contextPtr, JSObject object, String key);
+    fun getValue(contextPtr: Long, obj: JSObject, key: String): JSValue
 
-    JSValue _arrayGetValue(long contextPtr, JSArray array, int index);
+    fun arrayGetValue(contextPtr: Long, array: JSArray, index: Int): JSValue?
 
-    String[] _getException(long contextPtr);
+    fun getException(contextPtr: Long): Array<String>?
 
-    JSFunction _newClass(long contextPtr, int javaCallerId);
+    fun newClass(contextPtr: Long, javaCallerId: Int): JSFunction
+
+    fun toJSString(contextPtr: Long, value: JSValue): String?
+
+    fun getPrototype(contextPtr: Long, obj: JSObject): JSObject
+
+    fun setPrototype(contextPtr: Long, obj: JSObject, prototype: JSObject)
+
+    fun newError(contextPtr: Long, message: String): JSObject
+
+    fun isError(contextPtr: Long, value: JSValue): Boolean
 }

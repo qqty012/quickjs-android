@@ -1,63 +1,65 @@
-package com.quickjs;
+package com.quickjs
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.HashMap
 
 /**
  * 支持 require、exports
  */
-public abstract class CommonJSModule extends Module {
-    private static final String MODULE_SCRIPT_WRAPPER = "(function () {var module = { exports: {}, children: [] }; #CODE ; return module;})();";
-    private final Map<String, JSObject> modules = new HashMap<>();
+abstract class CommonJSModule: Module {
+    companion object {
+        const val MODULE_SCRIPT_WRAPPER = "(function () {var module = { exports: {}, children: [] }; #CODE ; return module;})();"
+        val modules = HashMap<String, JSObject>()
+    }
 
-    public CommonJSModule(QuickJS quickJS) {
-        super(quickJS, quickJS.getNative()._createContext(quickJS.runtimePtr));
-        registerJavaMethod((receiver, args) -> {
-            String moduleBaseName = null;
-            if (!receiver.isUndefined()) {
-                JSObject parentModule = receiver.getObject("module");
+    constructor(quickJS: QuickJS) : super(quickJS, quickJS.native.createContext(quickJS.runtimePtr)) {
+        registerJavaMethod("require") { receiver, args ->
+            var moduleBaseName: String? = null
+            if (receiver?.isUndefined() == true) {
+                val parentModule = receiver.getObject ("module")
                 if (!parentModule.isUndefined()) {
                     if (parentModule.contains("filename")) {
-                        moduleBaseName = parentModule.getString("filename");
+                        moduleBaseName = parentModule.getString("filename")
                     }
                 }
             }
-            String path = args.getString(0);
-            String moduleName = convertModuleName(moduleBaseName, path);
-            JSObject module = modules.get(path);
+            val path = args[0] as String
+            val moduleName = convertModuleName(moduleBaseName, path)
+            var module = modules[path]
             if (module == null) {
-                module = executeModule(moduleName);
+                module = executeModule(moduleName ?: "")
+                if (module == null) {
+                    throw RuntimeException("'moduleName' script is null")
+                }
+                modules[path] = module
             }
-            return module.get(TYPE.UNKNOWN, "exports");
-        }, "require");
-    }
-
-    @Override
-    public void close() {
-        modules.clear();
-        super.close();
-    }
-
-    @Override
-    protected abstract String getModuleScript(String moduleName);
-
-    public JSObject executeModuleScript(String source, String moduleName) {
-        String moduleName_ = convertModuleName(null, moduleName);
-        String wrapper = MODULE_SCRIPT_WRAPPER.replace("#CODE", source);
-        JSObject module = (JSObject) super.executeScript(TYPE.UNKNOWN, wrapper, moduleName_);
-        module.set("id", moduleName_);
-        module.set("filename", moduleName_);
-        if (moduleName_ != null) {
-            modules.put(moduleName_, module);
+            return@registerJavaMethod module.get(JSValue.TYPE.UNKNOWN, "exports") as Unit
         }
-        return module;
     }
 
-    public JSObject executeModule(String moduleName) {
-        String script = getModuleScript(moduleName);
+    override fun close() {
+        modules.clear()
+        super.close()
+    }
+
+    abstract override fun getModuleScript(moduleName: String): String?
+
+    override fun executeModuleScript(source: String, fileName: String): JSObject? {
+        val moduleName = convertModuleName(null, fileName) ?: ""
+        val wrapper = MODULE_SCRIPT_WRAPPER.replace("#CODE", source)
+        val module = super.executeScript(wrapper, moduleName) as JSObject?
+        if (module != null) {
+            module.set("id", moduleName)
+            module.set("filename", moduleName)
+            modules[moduleName] = module
+        }
+        return module
+    }
+
+    fun executeModule(moduleName: String): JSObject? {
+        val script = getModuleScript(moduleName)
         if (script == null) {
-            throw new RuntimeException("'moduleName' script is null");
+            throw RuntimeException("'moduleName' script is null")
         }
-        return executeModuleScript(script, moduleName);
+        return executeModuleScript(script, moduleName)
     }
 }

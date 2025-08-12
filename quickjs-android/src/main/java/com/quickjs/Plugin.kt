@@ -1,7 +1,7 @@
 package com.quickjs;
 
-public abstract class Plugin {
-    protected abstract void setup(JSContext context);
+abstract class Plugin {
+    abstract fun setup(context:JSContext)
 
-    protected abstract void close(JSContext context);
+    abstract fun close(context:JSContext)
 }

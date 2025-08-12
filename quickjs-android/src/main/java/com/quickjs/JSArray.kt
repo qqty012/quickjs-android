@@ -1,162 +1,137 @@
-package com.quickjs;
+package com.quickjs
 
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
+import org.json.JSONArray
+import org.json.JSONObject
 
-public class JSArray extends JSObject {
+class JSArray : JSObject, Collection<Any?> {
 
-    public JSArray(JSContext context) {
-        super(context, context.getNative()._initNewJSArray(context.getContextPtr()));
+    constructor(context: JSContext) : super(
+        context,
+        context.native.initNewJSArray(context.contextPtr)
+    )
+
+    constructor(context: JSContext, tag: Long, uInt32: Int, uFloat64: Double, uPtr: Long)
+            : super(context, tag, uInt32, uFloat64, uPtr)
+
+    constructor(context: JSContext, jsonArray: JSONArray) : this(context) {
+        append(this, jsonArray)
     }
 
-    JSArray(JSContext context, long tag, int u_int32, double u_float64, long u_ptr) {
-        super(context, tag, u_int32, u_float64, u_ptr);
-    }
-
-    public JSArray(JSContext context, JSONArray jsonArray) {
-        this(context);
-        append(this, jsonArray);
-    }
-
-    public static void append(JSArray jsArray, JSONArray jsonArray) {
-        if (jsonArray == null) {
-            return;
-        }
-        for (int i = 0; i < jsonArray.length(); i++) {
-            Object obj = jsonArray.opt(i);
-            if (obj instanceof String) {
-                jsArray.push((String) obj);
-            } else if (obj instanceof Integer) {
-                jsArray.push((Integer) obj);
-            } else if (obj instanceof Boolean) {
-                jsArray.push((Boolean) obj);
-            } else if (obj instanceof Number) {
-                jsArray.push(((Number) obj).doubleValue());
-            } else if (obj instanceof JSONObject) {
-                jsArray.push(new JSObject(jsArray.context, (JSONObject) obj));
-            } else if (obj instanceof JSONArray) {
-                jsArray.push(new JSArray(jsArray.context, (JSONArray) obj));
+    companion object {
+        fun append(jsArray: JSArray, jsonArray: JSONArray?) {
+            if (jsonArray == null) return
+            for (i in 0 until jsonArray.length()) {
+                when (val obj = jsonArray.opt(i)) {
+                    is String -> jsArray.push(obj)
+                    is Int -> jsArray.push(obj)
+                    is Boolean -> jsArray.push(obj)
+                    is Number -> jsArray.push(obj.toDouble())
+                    is JSONObject -> jsArray.push(JSObject(jsArray.context, obj))
+                    is JSONArray -> jsArray.push(JSArray(jsArray.context, obj))
+                }
             }
         }
     }
 
-    public Object get(int index) {
-        return get(TYPE.UNKNOWN, index);
+    fun get(index: Int): Any? = get(TYPE.UNKNOWN, index)
+
+    fun get(expectedType: TYPE?, index: Int): Any? {
+        context.checkReleased()
+        val type = expectedType ?: TYPE.UNKNOWN
+        val obj = getNative().arrayGet(getContextPtr(), type.value, this, index)
+        return checkType(obj, type)
     }
 
-    Object get(TYPE expectedType, int index) {
-        this.context.checkReleased();
-        if (expectedType == null) {
-            expectedType = TYPE.UNKNOWN;
-        }
-        Object object = getNative()._arrayGet(this.getContextPtr(), expectedType.value, this, index);
-        return JSValue.checkType(object, expectedType);
+    private fun pushObject(value: Any?): JSArray {
+        context.checkReleased()
+        getNative().arrayAdd(getContextPtr(), this, value)
+        return this
     }
 
-    JSArray pushObject(Object value) {
-        this.context.checkReleased();
-        getNative()._arrayAdd(getContextPtr(), this, value);
-        return this;
+    fun getInteger(index: Int): Int =
+        (get(TYPE.INTEGER, index) as? Int) ?: 0
+
+    fun getBoolean(index: Int): Boolean =
+        (get(TYPE.BOOLEAN, index) as? Boolean) ?: false
+
+    fun getDouble(index: Int): Double =
+        (get(TYPE.DOUBLE, index) as? Double) ?: 0.0
+
+    fun getString(index: Int): String? =
+        get(TYPE.STRING, index) as? String
+
+    fun getObject(index: Int): JSObject? =
+        get(TYPE.JS_OBJECT, index) as? JSObject
+
+    fun getArray(index: Int): JSArray? =
+        get(TYPE.JS_ARRAY, index) as? JSArray
+
+    fun getType(index: Int): TYPE {
+        context.checkReleased()
+        val value = context.native.arrayGetValue(getContextPtr(), this, index)
+        return value?.getType() ?: TYPE.NULL
     }
 
-    public int getInteger(int index) {
-        Object result = get(JSValue.TYPE.INTEGER, index);
-        if (result instanceof Integer) {
-            return (int) result;
-        }
-        return 0;
+    fun push(value: Int): JSArray = pushObject(value)
+    fun push(value: Double): JSArray = pushObject(value)
+    fun push(value: String?): JSArray = pushObject(value)
+    fun push(value: Boolean): JSArray = pushObject(value)
+    fun push(value: JSValue?): JSArray {
+        context.checkRuntime(value)
+        return pushObject(value)
     }
 
-    public boolean getBoolean(int index) {
-        Object result = get(JSValue.TYPE.BOOLEAN, index);
-        if (result instanceof Boolean) {
-            return (boolean) result;
-        }
-        return false;
-    }
+    fun length(): Int = getInteger("length")
 
-    public double getDouble(int index) {
-        Object result = get(JSValue.TYPE.DOUBLE, index);
-        if (result instanceof Double) {
-            return (double) result;
-        }
-        return 0;
-    }
-
-    public String getString(int index) {
-        Object result = get(JSValue.TYPE.STRING, index);
-        if (result instanceof String) {
-            return (String) result;
-        }
-        return null;
-    }
-
-    public JSObject getObject(int index) {
-        Object result = get(JSValue.TYPE.JS_OBJECT, index);
-        if (result instanceof JSObject) {
-            return (JSObject) result;
-        }
-        return null;
-    }
-
-    public JSArray getArray(int index) {
-        Object result = get(JSValue.TYPE.JS_ARRAY, index);
-        if (result instanceof JSArray) {
-            return (JSArray) result;
-        }
-        return null;
-    }
-
-    public TYPE getType(int index) {
-        this.context.checkReleased();
-        JSValue value = getContext().getNative()._arrayGetValue(this.getContextPtr(), this, index);
-        if (value == null) {
-            return JSValue.TYPE.NULL;
-        }
-        return value.getType();
-    }
-
-    public JSArray push(int value) {
-        return pushObject(value);
-    }
-
-    public JSArray push(double value) {
-        return pushObject(value);
-    }
-
-    public JSArray push(String value) {
-        return pushObject(value);
-    }
-
-    public JSArray push(boolean value) {
-        return pushObject(value);
-    }
-
-    public JSArray push(JSValue value) {
-        this.context.checkRuntime(value);
-        return pushObject(value);
-    }
-
-    public int length() {
-        return getInteger("length");
-    }
-
-    public JSONArray toJSONArray() {
-        JSONArray jsonArray = new JSONArray();
-        for (int i = 0; i < this.length(); i++) {
-            Object obj = this.get(i);
-            if (obj instanceof Undefined || obj instanceof JSFunction) {
-                continue;
-            }
-            if (obj instanceof Number || obj instanceof String || obj instanceof Boolean) {
-                jsonArray.put(obj);
-            } else if (obj instanceof JSArray) {
-                jsonArray.put(((JSArray) obj).toJSONArray());
-            } else if (obj instanceof JSObject) {
-                jsonArray.put(((JSObject) obj).toJSONObject());
+    fun toJSONArray(): JSONArray {
+        val jsonArray = JSONArray()
+        for (i in 0 until length()) {
+            val obj = get(i)
+            when (obj) {
+                is Undefined, is JSFunction -> {}
+                is Number, is String, is Boolean -> jsonArray.put(obj)
+                is JSArray -> jsonArray.put(obj.toJSONArray())
+                is JSObject -> jsonArray.put(obj.toJSONObject())
             }
         }
-        return jsonArray;
+        return jsonArray
+    }
+
+    override fun toString(): String {
+        val result = ArrayList<String>()
+        for (obj in this) {
+            result.add(obj?.toString() ?: "null")
+        }
+        return result.toString()
+    }
+
+    // -------- Collection<Any?> 实现 --------
+
+    override val size: Int
+        get() = length()
+
+    override fun isEmpty(): Boolean = size == 0
+
+    override fun iterator(): Iterator<Any?> = object : Iterator<Any?> {
+        private var index = 0
+        override fun hasNext(): Boolean = index < size
+        override fun next(): Any? {
+            if (index >= size) throw NoSuchElementException()
+            return get(index++)
+        }
+    }
+
+    override fun contains(element: @UnsafeVariance Any?): Boolean {
+        for (i in 0 until size) {
+            if (get(i) == element) return true
+        }
+        return false
+    }
+
+    override fun containsAll(elements: Collection<@UnsafeVariance Any?>): Boolean {
+        for (e in elements) {
+            if (!contains(e)) return false
+        }
+        return true
     }
 }

@@ -3,31 +3,29 @@ package com.quickjs;
 /**
  * 线程锁
  */
-class ThreadChecker {
-    private Thread thread;
-    private boolean released;
+class ThreadChecker(private val runtime: QuickJS) {
+    private var thread:Thread? = null
+    private var released:Boolean = false
 
-    private QuickJS runtime;
-
-    public ThreadChecker(QuickJS runtime) {
-        this.runtime = runtime;
-        this.acquire();
+    init {
+        acquire()
     }
 
-    public synchronized void acquire() {
+    @Synchronized
+    fun acquire() {
         if (this.thread != null && this.thread != Thread.currentThread()) {
-            throw new Error("All QuickJS methods must be called on the same thread. Invalid QuickJS thread access: current thread is " + Thread.currentThread() + " while the locker has thread " + this.thread);
+            throw Error("All QuickJS methods must be called on the same thread. Invalid QuickJS thread access: current thread is ${Thread.currentThread()} while the locker has thread ${this.thread}")
         } else if (this.thread != Thread.currentThread()) {
-            this.thread = Thread.currentThread();
-            this.released = false;
+            this.thread = Thread.currentThread()
+            this.released = false
         }
     }
 
-    public void checkThread() {
+    fun checkThread() {
         if (this.released && this.thread == null) {
-            throw new Error("Invalid QuickJS thread access: the locker has been released!");
+            throw Error("Invalid QuickJS thread access: the locker has been released!")
         } else if (this.thread != Thread.currentThread()) {
-            throw new Error("All QuickJS methods must be called on the same thread. Invalid QuickJS thread access: current thread is " + Thread.currentThread() + " while the locker has thread " + this.thread);
+            throw  Error("All QuickJS methods must be called on the same thread. Invalid QuickJS thread access: current thread is ${Thread.currentThread()} while the locker has thread ${this.thread}")
         }
     }
 }

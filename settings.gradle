@@ -1,3 +1,0 @@
-rootProject.name = "quickjs-android"
-include ':example'
-include ':quickjs-android'

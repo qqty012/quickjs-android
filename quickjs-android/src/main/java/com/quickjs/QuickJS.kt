@@ -1,219 +1,168 @@
-package com.quickjs;
+package com.quickjs
 
-import android.os.Handler;
-import android.os.HandlerThread;
-import android.util.Log;
+import android.os.Environment
+import android.os.Handler
+import android.os.HandlerThread
+import androidx.annotation.Keep
+import java.io.Closeable
+import java.io.File
+import java.util.Collections
 
-import androidx.annotation.Keep;
+class QuickJS private constructor(
+        val runtimePtr: Long,
+        handlerThread: HandlerThread?
+) : Closeable {
+    val native: EventQueue = EventQueue(this, handlerThread)
 
-import java.io.Closeable;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
+    val home = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS), "nodejs")
 
-public class QuickJS implements Closeable {
-    boolean released;
-    final long runtimePtr;
-    final EventQueue quickJSNative;
-    static final Map<Long, JSContext> sContextMap = Collections.synchronizedMap(new HashMap<>());
+    @Volatile
+    var released: Boolean = false
 
-    private QuickJS(long runtimePtr, HandlerThread handlerThread) {
-        this.runtimePtr = runtimePtr;
-        this.quickJSNative = new EventQueue(this, handlerThread);
-    }
+    companion object {
+        val sContextMap: MutableMap<Long, JSContext> = Collections.synchronizedMap(HashMap())
 
-    public static QuickJS createRuntime() {
-        return new QuickJS(QuickJSNativeImpl._createRuntime(), null);
-    }
+        private var sId = 0
 
-    public void postEventQueue(Runnable event) {
-        quickJSNative.postVoid(event, false);
-    }
+        fun createRuntime(): QuickJS {
+            return QuickJS(QuickJSNativeImpl.createRuntime(), null)
+        }
 
-    private static int sId = 0;
-
-    public static QuickJS createRuntimeWithEventQueue() {
-        Object[] objects = new Object[2];
-        HandlerThread handlerThread = new HandlerThread("QuickJS-" + (sId++));
-        handlerThread.start();
-        new Handler(handlerThread.getLooper()).post(() -> {
-            objects[0] = new QuickJS(QuickJSNativeImpl._createRuntime(), handlerThread);
-            synchronized (objects) {
-                objects[1] = true;
-                objects.notify();
+        fun createRuntimeWithEventQueue(): QuickJS {
+            val lock = Object()
+            val objects = arrayOfNulls<Any>(2)
+            val handlerThread = HandlerThread("QuickJS-" + (sId++))
+            handlerThread.start()
+            Handler(handlerThread.looper).post {
+                objects[0] = QuickJS(QuickJSNativeImpl.createRuntime(), handlerThread)
+                synchronized(lock) {
+                    objects[1] = true
+                    lock.notify()
+                }
             }
-        });
-        synchronized (objects) {
-            try {
+            synchronized(lock) {
                 if (objects[1] == null) {
-                    objects.wait();
-                }
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        }
-        return (QuickJS) objects[0];
-    }
-
-
-    public JSContext createContext() {
-        return new JSContext(this, getNative()._createContext(runtimePtr));
-    }
-
-    public void close() {
-        postEventQueue(() -> {
-            if (QuickJS.this.released) {
-                return;
-            }
-            JSContext[] values = new JSContext[sContextMap.size()];
-            sContextMap.values().toArray(values);
-            for (JSContext context : values) {
-                if (context.getQuickJS() == QuickJS.this) {
-                    context.close();
+                    try {
+                        lock.wait()
+                    } catch (e: InterruptedException) {
+                        e.printStackTrace()
+                    }
                 }
             }
-            getNative()._releaseRuntime(runtimePtr);
-            QuickJS.this.released = true;
-            quickJSNative.interrupt();
-        });
-    }
-
-    public void checkReleased() {
-        if (this.isReleased()) {
-            throw new Error("Runtime disposed error");
+            return objects[0] as QuickJS
         }
-    }
 
-    public QuickJSNative getNative() {
-        return quickJSNative;
-    }
+        @Keep
+        @JvmStatic
+        fun callJavaCallback(
+            contextPtr: Long,
+            javaCallerId: Int,
+            objectHandle: JSValue,
+            args: Array<Any>,
+        ): Any? {
+            val context = sContextMap[contextPtr] ?: return null
+            val methodDescriptor = context.functionRegistry[javaCallerId] ?: return null
+            val receiver = objectHandle as? JSObject
+            return methodDescriptor.callback?.invoke(receiver, args)
+        }
 
-    static class MethodDescriptor {
-        public JavaVoidCallback voidCallback;
-        public JavaCallback callback;
-    }
-
-    @Keep
-    static Object callJavaCallback(long context_ptr, int javaCallerId, JSValue objectHandle, JSArray argsHandle, boolean void_method) {
-        JSContext context = sContextMap.get(context_ptr);
-        if (context == null) {
-            return null;
-        }
-        MethodDescriptor methodDescriptor = context.functionRegistry.get(javaCallerId);
-        if (methodDescriptor == null) return null;
-        JSObject receiver = null;
-        if (objectHandle instanceof JSObject) {
-            receiver = (JSObject) objectHandle;
-        }
-        if (void_method) {
-            methodDescriptor.voidCallback.invoke(receiver, argsHandle);
-            return null;
-        }
-        return methodDescriptor.callback.invoke(receiver, argsHandle);
-    }
-
-    @Keep
-    static JSValue createJSValue(long contextPtr, int type, long tag, int u_int32, double u_float64, long u_ptr) {
-        JSContext context = sContextMap.get(contextPtr);
-        switch (type) {
-            case JSValue.TYPE_JS_FUNCTION:
-                return new JSFunction(context, tag, u_int32, u_float64, u_ptr);
-            case JSValue.TYPE_JS_ARRAY:
-                return new JSArray(context, tag, u_int32, u_float64, u_ptr);
-            case JSValue.TYPE_JS_OBJECT:
-                return new JSObject(context, tag, u_int32, u_float64, u_ptr);
-            case JSValue.TYPE_UNDEFINED:
-                return new JSObject.Undefined(context, tag, u_int32, u_float64, u_ptr);
-            default:
-                return new JSValue(context, tag, u_int32, u_float64, u_ptr);
-        }
-    }
-
-    @Keep
-    static String getModuleScript(long contextPtr, String moduleName) {
-        JSContext context = sContextMap.get(contextPtr);
-        if (context == null) {
-            return null;
-        }
-        if (context instanceof Module) {
-            Module module = (Module) context;
-            return module.getModuleScript(moduleName);
-        }
-        return null;
-    }
-
-    @Keep
-    static String convertModuleName(long contextPtr, String moduleBaseName, String moduleName) {
-        JSContext context = sContextMap.get(contextPtr);
-        if (context == null) {
-            return null;
-        }
-        if (context instanceof Module) {
-            Module module = (Module) context;
-            String result = module.convertModuleName(moduleBaseName, moduleName);
-            return result;
-        }
-        return null;
-    }
-
-
-    static Object executeFunction(JSContext context, JSValue objectHandle, String name, Object[] parameters) {
-        JSArray args = new JSArray(context);
-        if (parameters != null) {
-            for (Object item : parameters) {
-                if (item instanceof Integer) {
-                    args.push((int) item);
-                } else if (item instanceof Double) {
-                    args.push((double) item);
-                } else if (item instanceof Boolean) {
-                    args.push((boolean) item);
-                } else if (item instanceof String) {
-                    args.push((String) item);
-                } else if (item instanceof JSValue) {
-                    args.push((JSValue) item);
-                } else {
-                    args.push((JSValue) null);
-                }
+        @Keep
+        @JvmStatic
+        fun createJSValue(contextPtr: Long, type: Int, tag: Long, uInt32: Int, uFloat64: Double, uPtr: Long): JSValue {
+            val context = sContextMap[contextPtr]!!
+            return when (type) {
+                JSValue.TYPE_JS_FUNCTION -> JSFunction(context, tag, uInt32, uFloat64, uPtr)
+                JSValue.TYPE_JS_ARRAY -> JSArray(context, tag, uInt32, uFloat64, uPtr)
+                JSValue.TYPE_JS_OBJECT -> JSObject(context, tag, uInt32, uFloat64, uPtr)
+                JSValue.TYPE_JS_EXCEPTION -> JSException(context, tag, uInt32, uFloat64, uPtr)
+                JSValue.TYPE_UNDEFINED -> JSObject.Undefined(context, tag, uInt32, uFloat64, uPtr)
+                else -> JSValue(context, tag, uInt32, uFloat64, uPtr)
             }
         }
-        return context.getNative()._executeFunction(context.getContextPtr(), JSValue.TYPE_UNKNOWN, objectHandle, name, args);
-    }
 
-    static void checkException(JSContext context) {
-        String[] result = context.getNative()._getException(context.getContextPtr());
-        if (result == null) {
-            return;
+        @Keep
+        @JvmStatic
+        fun getModuleScript(contextPtr: Long, moduleName: String): String? {
+            val context = sContextMap[contextPtr] ?: return null
+            return if (context is Module) context.getModuleScript(moduleName) else null
         }
-        StringBuilder message = new StringBuilder();
-        message.append(result[1]).append('\n');
-        for (int i = 2; i < result.length; i++) {
-            message.append(result[i]);
+
+        @Keep
+        @JvmStatic
+        fun convertModuleName(
+            contextPtr: Long,
+            moduleBaseName: String,
+            moduleName: String
+        ): String? {
+            val context = sContextMap[contextPtr] ?: return null
+            return if (context is Module) context.convertModuleName(
+                moduleBaseName,
+                moduleName
+            ) else null
         }
-        throw new QuickJSException(result[0], message.toString());
+
+        fun executeFunction(
+            context: JSContext,
+            objectHandle: JSValue,
+            name: String,
+            parameters: Array<out Any?>
+        ): Any? {
+            return context.native.executeFunction(
+                context.contextPtr,
+                JSValue.TYPE_UNKNOWN,
+                objectHandle,
+                name,
+                parameters
+            )
+        }
+
+        fun checkException(context: JSContext) {
+            val result = context.native.getException(context.contextPtr) ?: return
+            val message = StringBuilder().apply {
+                append(result[1]).append('\n')
+                for (i in 2 until result.size) {
+                    append(result[i])
+                }
+            }
+            throw QuickJSException(result[0], message.toString())
+        }
+
+        const val JS_EVAL_TYPE_GLOBAL = 0
+        const val JS_EVAL_TYPE_MODULE = 1
+        const val JS_EVAL_TYPE_MASK = 3
+        const val JS_EVAL_FLAG_STRICT = (1 shl 3)
+        const val JS_EVAL_FLAG_STRIP = (1 shl 4)
+        const val JS_EVAL_FLAG_COMPILE_ONLY = (1 shl 5)
+        const val JS_EVAL_FLAG_BACKTRACE_BARRIER = (1 shl 6)
+
+        init {
+            System.loadLibrary("quickjs")
+            System.loadLibrary("quickjs-android")
+        }
     }
 
-
-    public boolean isReleased() {
-        return this.released;
+    fun postEventQueue(event: Runnable) {
+//        native.postVoid(event, false)
     }
 
+    fun createContext(): JSContext {
+        return JSContext(this, native.createContext(runtimePtr))
+    }
 
-    /* JS_Eval() flags */
-    static int JS_EVAL_TYPE_GLOBAL = (0); /* global code (default) */
-    static int JS_EVAL_TYPE_MODULE = (1); /* module code */
-    static int JS_EVAL_TYPE_MASK = (3);
-    static int JS_EVAL_FLAG_STRICT = (1 << 3); /* force 'strict' mode */
-    static int JS_EVAL_FLAG_STRIP = (1 << 4); /* force 'strip' mode */
-    /* compile but do not run. The result is an object with a
-       JS_TAG_FUNCTION_BYTECODE or JS_TAG_MODULE tag. It can be executed
-       with JS_EvalFunction(). */
-    static int JS_EVAL_FLAG_COMPILE_ONLY = (1 << 5);
-    /* don't include the stack frames before this eval in the Error() backtraces */
-    static int JS_EVAL_FLAG_BACKTRACE_BARRIER = (1 << 6);
+    override fun close() {
+        if (released) return
+        val values = sContextMap.values.filter { it.quickJS == this@QuickJS }
+        values.forEach { it.close() }
+        native.releaseRuntime(runtimePtr)
+        released = true
+    }
 
+    fun checkReleased() {
+        if (released) throw Error("Runtime disposed error")
+    }
+    fun isReleased(): Boolean = released
 
-    static {
-        System.loadLibrary("quickjs");
-        System.loadLibrary("quickjs-android");
+    class MethodDescriptor {
+        var callback: JavaCallback? = null
     }
 }

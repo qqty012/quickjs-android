@@ -1,27 +1,36 @@
-package com.quickjs;
+package com.quickjs
+
+import com.quickjs.classes.Url
+import com.quickjs.plugin.*
 
 /**
  * 支持 import、export
  */
-public abstract class ES6Module extends Module {
+abstract class ES6Module(quickJS: QuickJS): Module(quickJS, quickJS.native.createContext(quickJS.runtimePtr)) {
 
-    public ES6Module(QuickJS quickJS) {
-        super(quickJS, quickJS.getNative()._createContext(quickJS.runtimePtr));
+    init {
+        this.addPlugin(ConsolePlugin())
+        this.addPlugin(TimerPlugin())
+        this.addPlugin(BufferPlugin())
+        this.addPlugin(HttpPlugin())
+        addPlugin(PathPlugin())
+        addPlugin(OsPlugin())
+        addPlugin(FsPlugin())
+        addPlugin(URLPlugin())
     }
 
-    @Override
-    protected abstract String getModuleScript(String moduleName);
+    abstract override fun getModuleScript(moduleName: String): String?
 
-    public void executeModuleScript(String source, String moduleName) {
-        checkReleased();
-        getNative()._executeScript(context.getContextPtr(), JSValue.TYPE.NULL.value, source, moduleName, QuickJS.JS_EVAL_TYPE_MODULE);
+    override fun executeModuleScript(source: String, fileName: String): Any? {
+        checkReleased()
+        return native.executeScript(contextPtr, JSValue.TYPE.NULL.value, source, fileName, QuickJS.JS_EVAL_TYPE_MODULE)
     }
 
-    public void executeModule(String moduleName) {
-        String script = getModuleScript(moduleName);
+    fun executeModule(moduleName: String) {
+        val script = getModuleScript(moduleName)
         if (script == null) {
-            throw new RuntimeException("'moduleName' script is null");
+            throw RuntimeException("'moduleName' script is null")
         }
-        executeModuleScript(script, moduleName);
+        executeModuleScript(script, moduleName)
     }
 }

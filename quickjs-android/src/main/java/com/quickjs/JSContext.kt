@@ -1,194 +1,173 @@
-package com.quickjs;
+package com.quickjs
 
-import java.io.Closeable;
-import java.lang.ref.WeakReference;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.WeakHashMap;
+import java.io.Closeable
+import java.util.Collections
+import java.util.HashMap
+import java.util.HashSet
+import java.util.LinkedList
+import java.util.WeakHashMap
 
-public class JSContext extends JSObject implements Closeable {
-    final QuickJS quickJS;
-    final long contextPtr;
-    final Set<Plugin> plugins = Collections.synchronizedSet(new HashSet<>());
-    final Map<Integer, JSValue> refs = Collections.synchronizedMap(new WeakHashMap<>());
-    final List<Object[]> releaseObjPtrPool = Collections.synchronizedList(new LinkedList<>());
-    final Map<Integer, QuickJS.MethodDescriptor> functionRegistry = Collections.synchronizedMap(new HashMap<>());
+open class JSContext(
+    val quickJS: QuickJS,
+    val contextPtr: Long
+): Closeable {
 
-    JSContext(QuickJS quickJS, long contextPtr) {
-        super(null, quickJS.getNative()._getGlobalObject(contextPtr));
-        this.quickJS = quickJS;
-        this.contextPtr = contextPtr;
-        this.context = this;
-        QuickJS.sContextMap.put(contextPtr, this);
+    private val plugins: MutableSet<Plugin> = Collections.synchronizedSet(HashSet())
+    val refs: MutableMap<Int, JSValue> = Collections.synchronizedMap(WeakHashMap())
+    private val releaseObjPtrPool: MutableList<Array<Any>> = Collections.synchronizedList(LinkedList())
+    val functionRegistry: MutableMap<Int, QuickJS.MethodDescriptor> = Collections.synchronizedMap(HashMap())
+    private var released: Boolean = false
+    val native: QuickJSNative by lazy { quickJS.native }
+    val global: JSObject by lazy { native.getGlobalObject(contextPtr) }
+
+    init {
+        QuickJS.sContextMap[contextPtr] = this
     }
 
-    long getContextPtr() {
-        return this.contextPtr;
-    }
-
-    void addObjRef(JSValue reference) {
-        if (reference.getClass() != JSContext.class) {
-            refs.put(reference.hashCode(), reference);
+    fun addObjRef(reference: JSValue) {
+        if (reference.javaClass != JSContext::class.java) {
+            refs[reference.hashCode()] = reference
         }
     }
 
-    void releaseObjRef(JSValue reference, boolean finalize) {
+    fun releaseObjRef(reference: JSValue, finalize: Boolean) {
         if (finalize) {
-            releaseObjPtrPool.add(new Object[]{reference.tag, reference.u_int32, reference.u_float64, reference.u_ptr});
+            releaseObjPtrPool.add(arrayOf(reference.tag, reference.uInt32, reference.uFloat64, reference.uPtr))
         } else {
-            getNative()._releasePtr(getContextPtr(), reference.tag, reference.u_int32, reference.u_float64, reference.u_ptr);
+            native.releasePtr(contextPtr, reference.tag, reference.uInt32, reference.uFloat64, reference.uPtr)
         }
-        removeObjRef(reference);
+        removeObjRef(reference)
     }
 
-    private void checkReleaseObjPtrPool() {
-        while (!releaseObjPtrPool.isEmpty()) {
-            Object[] ptr = releaseObjPtrPool.get(0);
-            getNative()._releasePtr(getContextPtr(), (long) ptr[0], (int) ptr[1], (double) ptr[2], (long) ptr[3]);
-            releaseObjPtrPool.remove(0);
+    private fun checkReleaseObjPtrPool() {
+        while (releaseObjPtrPool.isNotEmpty()) {
+            val ptr = releaseObjPtrPool[0]
+            native.releasePtr(contextPtr, ptr[0] as Long, ptr[1] as Int, ptr[2] as Double, ptr[3] as Long)
+            releaseObjPtrPool.removeAt(0)
         }
     }
 
-    void removeObjRef(JSValue reference) {
-        refs.remove(reference.hashCode());
+    fun removeObjRef(reference: JSValue) {
+        refs.remove(reference.hashCode())
     }
 
-
-    @Override
-    public void close() {
-        postEventQueue(() -> {
-            if (released) {
-                return;
-            }
-            for (Plugin plugin : plugins) {
-                plugin.close(JSContext.this);
-            }
-            plugins.clear();
-            functionRegistry.clear();
-            JSValue[] jsValues = refs.values().toArray(new JSValue[0]);
-            for (JSValue it : jsValues) {
-                if (it != null) {
-                    it.close();
-                }
-            }
-            checkReleaseObjPtrPool();
-            JSContext.super.close();
-            getNative()._releaseContext(contextPtr);
-            QuickJS.sContextMap.remove(getContextPtr());
-        });
+    override fun close() {
+        if (released) return
+        plugins.forEach { it.close(this@JSContext) }
+        plugins.clear()
+        functionRegistry.clear()
+        refs.values.toTypedArray().forEach { it.close() }
+        checkReleaseObjPtrPool()
+        native.releaseContext(contextPtr)
+        QuickJS.sContextMap.remove(contextPtr)
+        released = true
     }
 
-    protected Object executeScript(TYPE expectedType, String source, String fileName) throws QuickJSException {
-        Object object = getNative()._executeScript(this.getContextPtr(), expectedType.value, source, fileName, QuickJS.JS_EVAL_TYPE_GLOBAL);
-        QuickJS.checkException(context);
-        return object;
+    open fun registerJavaMethod(jsFunctionName: String, callback: JavaCallback): JSFunction {
+        checkReleased()
+        val functionHandle = native.registerJavaMethod(contextPtr, global, jsFunctionName, callback.hashCode())
+        registerCallback(callback)
+        return functionHandle
     }
 
-    /**
-     * @return Integer/Double/Boolean/String/JSObject/JSArray/JSFunction
-     */
-    public Object executeScript(String source, String fileName) throws QuickJSException {
-        return executeScript(JSValue.TYPE.UNKNOWN, source, fileName);
+    /*open fun registerJavaMethod(jsFunctionName: String, callback: JavaVoidCallback): JSFunction {
+        checkReleased()
+        val functionHandle = native.registerJavaMethod(contextPtr, global, jsFunctionName, callback.hashCode(), true)
+        registerCallback(callback)
+        return functionHandle
+    }*/
+
+    private fun executeScript(expectedType: JSValue.TYPE, source: String, fileName: String?): Any? {
+        val obj = native.executeScript(this.contextPtr, expectedType.value, source, fileName ?: "", QuickJS.JS_EVAL_TYPE_GLOBAL)
+        QuickJS.checkException(this)
+        return obj
     }
 
-    public Object executeScript(String source, String fileName, int evalType) throws QuickJSException {
-        Object object = getNative()._executeScript(this.getContextPtr(), JSValue.TYPE.UNKNOWN.value, source, fileName, evalType);
-        QuickJS.checkException(context);
-        return object;
+    fun executeScript(source: String, fileName: String): Any? =
+        executeScript(JSValue.TYPE.UNKNOWN, source, fileName)
+
+    fun executeScript(source: String, fileName: String, evalType: Int): Any? {
+        val obj = native.executeScript(this.contextPtr, JSValue.TYPE.UNKNOWN.value, source, fileName, evalType)
+        QuickJS.checkException(this)
+        return obj
     }
 
-    public Object executeModuleScript(String source, String fileName, int evalType) throws QuickJSException {
-        Object object = getNative()._executeScript(this.getContextPtr(), JSValue.TYPE.UNKNOWN.value, source, fileName, QuickJS.JS_EVAL_TYPE_MODULE);
-        QuickJS.checkException(context);
-        return object;
+    open fun executeModuleScript(source: String, fileName: String): Any? {
+        val obj = native.executeScript(this.contextPtr, JSValue.TYPE.UNKNOWN.value, source, fileName, QuickJS.JS_EVAL_TYPE_MODULE)
+        QuickJS.checkException(this)
+        return obj
     }
 
+    fun executeIntegerScript(source: String, fileName: String?): Int =
+        executeScript(JSValue.TYPE.INTEGER, source, fileName) as Int
 
-    public int executeIntegerScript(String source, String fileName) throws QuickJSException {
-        return (int) executeScript(JSValue.TYPE.INTEGER, source, fileName);
+    fun executeDoubleScript(source: String, fileName: String?): Double =
+        executeScript(JSValue.TYPE.DOUBLE, source, fileName) as Double
+
+    fun executeBooleanScript(source: String, fileName: String?): Boolean =
+        executeScript(JSValue.TYPE.BOOLEAN, source, fileName) as Boolean
+
+    fun executeStringScript(source: String, fileName: String?): String =
+        executeScript(JSValue.TYPE.STRING, source, fileName) as String
+
+    fun executeVoidScript(source: String, fileName: String?) {
+        executeScript(JSValue.TYPE.NULL, source, fileName)
     }
 
-    public double executeDoubleScript(String source, String fileName) throws QuickJSException {
-        return (double) executeScript(JSValue.TYPE.DOUBLE, source, fileName);
+    fun executeArrayScript(source: String, fileName: String?): JSArray =
+        executeScript(JSValue.TYPE.JS_ARRAY, source, fileName) as JSArray
+
+    fun executeObjectScript(source: String, fileName: String?): JSObject =
+        executeScript(JSValue.TYPE.JS_OBJECT, source, fileName) as JSObject
+
+    fun isReleased(): Boolean =
+        quickJS.released || released
+
+    fun registerCallback(callback: JavaCallback) {
+        val methodDescriptor = QuickJS.MethodDescriptor()
+        methodDescriptor.callback = callback
+        functionRegistry[callback.hashCode()] = methodDescriptor
     }
 
-    public boolean executeBooleanScript(String source, String fileName) throws QuickJSException {
-        return (boolean) executeScript(JSValue.TYPE.BOOLEAN, source, fileName);
-    }
+    /*fun registerCallback(callback: JavaVoidCallback) {
+        val methodDescriptor = QuickJS.MethodDescriptor()
+        methodDescriptor.voidCallback = callback
+        functionRegistry[callback.hashCode()] = methodDescriptor
+    }*/
 
-    public String executeStringScript(String source, String fileName) throws QuickJSException {
-        return (String) executeScript(JSValue.TYPE.STRING, source, fileName);
-    }
-
-    public void executeVoidScript(String source, String fileName) throws QuickJSException {
-        executeScript(JSValue.TYPE.NULL, source, fileName);
-    }
-
-    public JSArray executeArrayScript(String source, String fileName) throws QuickJSException {
-        return (JSArray) executeScript(JSValue.TYPE.JS_ARRAY, source, fileName);
-    }
-
-    public JSObject executeObjectScript(String source, String fileName) throws QuickJSException {
-        return (JSObject) executeScript(JSValue.TYPE.JS_OBJECT, source, fileName);
-    }
-
-    public boolean isReleased() {
-        if (getQuickJS().isReleased()) {
-            return true;
-        }
-        return this.released;
-    }
-
-    void _registerCallback(JavaCallback callback, JSFunction functionHandle) {
-        QuickJS.MethodDescriptor methodDescriptor = new QuickJS.MethodDescriptor();
-        methodDescriptor.callback = callback;
-        functionRegistry.put(callback.hashCode(), methodDescriptor);
-    }
-
-    void _registerCallback(JavaVoidCallback callback, JSFunction functionHandle) {
-        QuickJS.MethodDescriptor methodDescriptor = new QuickJS.MethodDescriptor();
-        methodDescriptor.voidCallback = callback;
-        functionRegistry.put(callback.hashCode(), methodDescriptor);
-    }
-
-    void checkRuntime(JSValue value) {
+    fun checkRuntime(value: JSValue?) {
         if (value != null && !value.isUndefined()) {
-            if (value.context == null) {
-                throw new Error("Invalid target runtime");
-            }
-            QuickJS quickJS = value.context.quickJS;
-            if (quickJS == null || quickJS.isReleased() || quickJS != this.quickJS) {
-                throw new Error("Invalid target runtime");
+            val quickJS = value.context.quickJS
+            if (quickJS.released || quickJS != this.quickJS) {
+                throw Error("Invalid target runtime")
             }
         }
     }
 
-    public void addPlugin(Plugin plugin) {
-        checkReleased();
-        if (plugins.contains(plugin)) {
-            return;
-        }
-        plugin.setup(context);
-        this.plugins.add(plugin);
+    fun newError(message: String): JSObject {
+        return native.newError(contextPtr, message)
     }
 
-    void checkReleased() {
-        checkReleaseObjPtrPool();
-        if (this.isReleased()) {
-            throw new Error("Context disposed error");
-        }
+    fun addPlugin(plugin: Plugin) {
+        checkReleased()
+        if (plugins.contains(plugin)) return
+        plugin.setup(this)
+        plugins.add(plugin)
     }
 
-    public QuickJSNative getNative() {
-        return quickJS.getNative();
+    fun checkReleased() {
+        checkReleaseObjPtrPool()
+        if (isReleased()) throw Error("Context disposed error")
     }
 
-    public QuickJS getQuickJS() {
-        return quickJS;
+    fun toJSString(obj: JSValue): String {
+        return native.toJSString(contextPtr, obj) ?: "undefined"
     }
+
+    fun getPrototype(obj: JSObject): JSObject {
+        return native.getPrototype(contextPtr, obj)
+    }
+
+//    fun getNative(): QuickJSNative = quickJS.native
+
 }
