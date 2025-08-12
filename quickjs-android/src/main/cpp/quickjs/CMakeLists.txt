@@ -1,12 +1,13 @@
-cmake_minimum_required(VERSION 3.10.2)
+cmake_minimum_required(VERSION 4.0.2)
 project(quickjs CXX)
 include_directories(quickjs)
 set(SOURCE_DIR
         quickjs/cutils.c
-        quickjs/libbf.c
+        quickjs/dtoa.c
         quickjs/libregexp.c
         quickjs/libunicode.c
         quickjs/quickjs.c
+        quickjs/quickjs-libc.c
         )
 
 file(STRINGS "quickjs/VERSION" CONFIG_VERSION)
